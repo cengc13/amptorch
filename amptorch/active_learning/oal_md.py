@@ -64,17 +64,16 @@ if __name__ == "__main__":
         "verbose": 0
     }
 
-    structure_optim = Relaxation(slab, BFGS, fmax=0.05, steps=None)
-    online_calc = AMPOnlineCalc(parent_dataset=images, parent_calc=EMT(),
-            n_ensembles=3, n_cores='max', training_params=training_params)
-    structure_optim.run(online_calc, filename='relax_oal')
+    md_runner = MDsimulate(ensemble="nvtberendsen", dt=1, temp=300,
+            count=2000, initial_geometry=slab)
+    online_calc = AMPOnlineCalc(images, EMT(), 5, training_params)
+    md_runner.run(online_calc, filename='md_oal')
 
     # Calculate true relaxation
-    true_relax = Relaxation(slab, BFGS)
-    true_relax.run(EMT(), 'true_relax')
-    parent_calc_traj = true_relax.get_trajectory('true_relax', 0, -1, 1)
+    md_runner.run(EMT(), 'true_md')
+    parent_calc_traj = md_runner.get_trajectory('true_md', 0, -1, 1)
     n_parent_calls = online_calc.parent_calls
-    final_oal_traj = ase.io.read("./relax_oal.traj", ":")
+    final_oal_traj = ase.io.read("./md_oal.traj", ":")
 
     #Compute ML predicted energies
     ml_relaxation_energies = [image.get_potential_energy() for image in final_oal_traj]
@@ -82,24 +81,3 @@ if __name__ == "__main__":
     emt_evaluated_ml_energies = [EMT().get_potential_energy(image) for image in final_oal_traj]
     #Compute actual energies for EMT relaxation structures
     emt_relaxation_energies = [image.get_potential_energy() for image in parent_calc_traj]
-    steps = range(len(final_oal_traj))
-
-    def compute_loss(a, b):
-      return np.mean(np.sqrt(np.sum((a - b)**2, axis=1)))
-
-    initial_structure = images[0].positions
-    print(f'Number of OAL steps: {len(final_oal_traj)}\nTotal # of queries (EMT calls): {n_parent_calls} \n')
-    print(f"Final OAL Relaxed Energy: {ml_relaxation_energies[-1]}")
-    print(f'EMT evaluation at OAL structure: {EMT().get_potential_energy(final_oal_traj[-1])}\n')
-    oal_relaxed_structure = final_oal_traj[-1].positions
-
-    print(f'Total number of EMT steps: {len(emt_relaxation_energies)}')
-    print(f'Final EMT Relaxed Energy: {emt_relaxation_energies[-1]}\n')
-    emt_relaxed_structure = parent_calc_traj[-1].positions
-
-
-    initial_structure_error = compute_loss(initial_structure, emt_relaxed_structure)
-    relaxed_structure_error = compute_loss(oal_relaxed_structure, emt_relaxed_structure)
-
-    print(f'Initial structure error: {initial_structure_error}')
-    print(f'OAL relaxed structure error: {relaxed_structure_error}')
